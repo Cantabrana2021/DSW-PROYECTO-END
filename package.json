@@ -1,0 +1,39 @@
+{
+  "name": "task-graphql",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start:backend": "node src/index.js",
+    "start:frontend": "react-scripts start",
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@apollo/client": "^3.11.8",
+    "apollo-server": "^3.13.0",
+    "facturapi": "^4.4.2",
+    "graphql": "^16.9.0",
+    "mongoose": "^8.7.2",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-scripts": "5.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
