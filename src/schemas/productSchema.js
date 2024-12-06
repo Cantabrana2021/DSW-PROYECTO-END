@@ -1,6 +1,8 @@
 const { gql } = require('apollo-server');
 
 const typeDefs = gql`
+  scalar Date
+
   enum Category {
     ELECTRONICS
     CLOTHING
@@ -16,12 +18,12 @@ const typeDefs = gql`
     category: Category!
     brand: String!
     stock: Int!
-    creationDate: String
+    createAt: Date
     imgs: [String]
     facturapiid: String
-    sku: String  
-    clave_producto: String 
-    unidad_medida: String  
+    sku: String
+    clave_producto: String
+    unidad_medida: String
   }
 
   type Query {
@@ -35,7 +37,7 @@ const typeDefs = gql`
       price: Float!,
       category: Category,
       brand: String,
-      creationDate: String,
+      createAt: Date,
       stock: Int,
       imgs: [String],
       facturapiid: String,
@@ -51,6 +53,7 @@ const typeDefs = gql`
       price: Float,
       category: Category,
       brand: String,
+      createAt: Date,
       stock: Int,
       imgs: [String],
       facturapiid: String,
