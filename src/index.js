@@ -9,10 +9,13 @@ const clientResolvers = require('./resolvers/clientResolver');
 const cartTypeDefs = require('./schemas/cartSchema');
 const cartResolvers = require('./resolvers/cartResolver');
 global.XMLHttpRequest = require('xhr2');
+const notificationTypeDefs = require('./schemas/notificationSchema');
+const notificationResolvers = require('./resolvers/notificationResolver');
+
 const startServer = async () => {
   await connectDB(); // Conectar a MongoDB
-  const typeDefs = [productTypeDefs, clientTypeDefs, cartTypeDefs];
-  const resolvers = [productResolvers, clientResolvers, cartResolvers];
+  const typeDefs = [productTypeDefs, clientTypeDefs, cartTypeDefs, notificationTypeDefs];
+  const resolvers = [productResolvers, clientResolvers, cartResolvers, notificationResolvers];
 
   const server = new ApolloServer({ typeDefs, resolvers });
 

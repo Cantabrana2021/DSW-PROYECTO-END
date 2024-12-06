@@ -1,5 +1,6 @@
 const User = require('../models/clientModel');
 const facturapiUser = require('../apis/facturapiUser');
+const notificationService = require('../services/notificationService');
 
 const userService = {
   getUsers: async () => await User.find(),
@@ -17,7 +18,13 @@ const userService = {
 
     user.facturapiId = facturapiUserResponse.id;
 
-    return await user.save();
+    const savedUser = await user.save();
+
+    // Enviar SMS
+    const message = `Bienvenido, ${user.name}! Gracias por registrarte.`;
+    await notificationService.sendSMS(user.tel, message);
+
+    return savedUser;
   },
 
   updateUser: async ({ _id, ...rest }) => {
