@@ -19,6 +19,9 @@ const typeDefs = gql`
     creationDate: String
     imgs: [String]
     facturapiid: String
+    sku: String  
+    clave_producto: String 
+    unidad_medida: String  
   }
 
   type Query {
@@ -32,9 +35,13 @@ const typeDefs = gql`
       price: Float!,
       category: Category,
       brand: String,
+      creationDate: String,
       stock: Int,
       imgs: [String],
-      facturapiid: String
+      facturapiid: String,
+      sku: String,
+      clave_producto: String,
+      unidad_medida: String
     ): Product
 
     updateProduct(
@@ -46,7 +53,9 @@ const typeDefs = gql`
       brand: String,
       stock: Int,
       imgs: [String],
-      facturapiid: String
+      facturapiid: String,
+      sku: String,
+      clave_producto: String,
     ): Product
 
     deleteProduct(_id: ID!): Product

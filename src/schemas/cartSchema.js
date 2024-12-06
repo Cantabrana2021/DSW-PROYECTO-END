@@ -16,6 +16,10 @@ enum Category {
     brand: String!
     stock: Int!
     imgs: [String!]
+    facturapiid: String
+    sku: String
+    clave_producto: String
+    unidad_medida: String
   }
 
   type CartProduct {

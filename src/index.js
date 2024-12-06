@@ -8,7 +8,7 @@ const clientTypeDefs = require('./schemas/clientSchema');
 const clientResolvers = require('./resolvers/clientResolver');
 const cartTypeDefs = require('./schemas/cartSchema');
 const cartResolvers = require('./resolvers/cartResolver');
-
+global.XMLHttpRequest = require('xhr2');
 const startServer = async () => {
   await connectDB(); // Conectar a MongoDB
   const typeDefs = [productTypeDefs, clientTypeDefs, cartTypeDefs];
