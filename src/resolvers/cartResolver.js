@@ -23,14 +23,27 @@ module.exports = {
     },
   },
   Mutation: {
-    CrearCarrito: (_, { usuario }) => cartService.crearCarrito(usuario),
+    CrearCarrito: async (_, { usuario }) => {
+      try {
+        // Verificar si ya existe un carrito activo
+        const carritoExistente = await cartService.verificarCarritoActivo(usuario);
+        if (carritoExistente) {
+          throw new Error('Ya tienes un carrito activo. Por favor, cierra el carrito antes de crear uno nuevo.');
+        }
+        
+        // Crear un nuevo carrito si no existe uno activo
+        return await cartService.crearCarrito(usuario);
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
     AgregarProd: (_, { id_carrito, id_producto, cantidad }) =>
       cartService.agregarProducto(id_carrito, id_producto, cantidad),
     EliminarProd: (_, { id_carrito, id_producto }) =>
       cartService.eliminarProducto(id_carrito, id_producto),
     CerrarCarrito: (_, { id_carrito }) => cartService.cerrarCarrito(id_carrito),
 
-    
+  
     ReducirCant: (_, { id_carrito, id_producto }) =>
       cartService.reducirCantidadProducto(id_carrito, id_producto),
     ActualizarCant: async (_, { id_carrito, id_producto, cantidad }) => {

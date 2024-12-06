@@ -3,6 +3,14 @@ const Product = require('../models/productModel');
 const mongoose = require('mongoose');
 
 module.exports = {
+  async verificarCarritoActivo(usuario) {
+    try {
+      const carritoActivo = await Cart.findOne({ usuario, estatus: 'activo' });
+      return carritoActivo || null;
+    } catch (error) {
+      throw new Error(`Error al verificar carrito activo: ${error.message}`);
+    }
+  },
   async crearCarrito(usuarioId) {
     try {
       const nuevoCarrito = new Cart({
