@@ -3,6 +3,14 @@ const Product = require('../models/productModel');
 const mongoose = require('mongoose');
 
 module.exports = {
+  async verificarCarritoActivo(usuario) {
+    try {
+      const carritoActivo = await Cart.findOne({ usuario, estatus: 'activo' });
+      return carritoActivo || null;
+    } catch (error) {
+      throw new Error(`Error al verificar carrito activo: ${error.message}`);
+    }
+  },
   async crearCarrito(usuarioId) {
     try {
       const nuevoCarrito = new Cart({
@@ -21,13 +29,15 @@ module.exports = {
     }
   },
 
-  async agregarProducto(id_carrito, id_producto, cantidad) {
+  async agregarProducto(id_carrito, id_producto, cantidad, clave_producto, sku, unidad_medida) {
     try {
+      // Buscar el carrito por ID
       const carrito = await Cart.findOne({ id_carrito });
       if (!carrito || carrito.estatus !== 'activo') {
         throw new Error('Carrito no encontrado o inactivo.');
       }
   
+      // Buscar el producto por ID
       const producto = await Product.findById(id_producto);
       if (!producto) {
         throw new Error('Producto no encontrado.');
@@ -36,33 +46,42 @@ module.exports = {
         throw new Error('Stock insuficiente.');
       }
   
+      // Asignar SKU, Clave del producto y Unidad de medida
+      producto.sku = sku || producto.sku;
+      producto.clave_producto = clave_producto || producto.clave_producto;
+      producto.unidad_medida = unidad_medida || producto.unidad_medida;
+  
+      // Buscar si el producto ya está en el carrito
       const prodIndex = carrito.productos.findIndex((p) => p.producto.toString() === id_producto);
       if (prodIndex >= 0) {
-        // Actualizar cantidad y subtotal si el producto ya está en el carrito
+        // Si ya existe, actualizar la cantidad y el subtotal
         carrito.productos[prodIndex].cantidad += cantidad;
         carrito.productos[prodIndex].subtotal += cantidad * producto.price;
       } else {
-        // Agregar un nuevo producto al carrito
+        // Si no está en el carrito, agregarlo
         carrito.productos.push({
           producto: id_producto,
           cantidad,
           subtotal: cantidad * producto.price,
+          clave_producto: producto.clave_producto, // Agregar clave del producto
+          sku: producto.sku, // Agregar SKU
+          unidad_medida: producto.unidad_medida // Agregar unidad de medida
         });
       }
   
-      // Recalcular totales del carrito
+      // Recalcular los totales del carrito
       carrito.subtotal = carrito.productos.reduce((acc, p) => acc + p.subtotal, 0);
       carrito.IVA = carrito.subtotal * 0.16;
       carrito.total = carrito.subtotal + carrito.IVA;
   
-      // Guardar cambios
+      // Guardar los cambios
       return await carrito.save();
     } catch (error) {
       console.error(`Error en agregarProducto: ${error.message}`);
       throw new Error(`Error al agregar producto: ${error.message}`);
     }
   },
-  async eliminarProducto(id_carrito, id_producto) {
+  async reducirCantidadProducto(id_carrito, id_producto) {
     try {
       const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
       if (!carrito || carrito.estatus !== 'activo') throw new Error('Carrito no encontrado o inactivo.');
@@ -71,8 +90,14 @@ module.exports = {
       const prodIndex = carrito.productos.findIndex(p => p.producto._id.toString() === id_producto);
       if (prodIndex === -1) throw new Error('Producto no encontrado en el carrito.');
   
-      // Eliminar producto del carrito
-      carrito.productos.splice(prodIndex, 1);
+      // Reducir la cantidad del producto
+      if (carrito.productos[prodIndex].cantidad > 1) {
+        carrito.productos[prodIndex].cantidad -= 1;
+        carrito.productos[prodIndex].subtotal -= carrito.productos[prodIndex].producto.price;
+      } else {
+        // Si la cantidad es 1, eliminar el producto del carrito
+        carrito.productos.splice(prodIndex, 1);
+      }
   
       // Recalcular totales
       carrito.subtotal = carrito.productos.reduce((acc, p) => acc + p.subtotal, 0);
@@ -81,213 +106,223 @@ module.exports = {
   
       return await carrito.save();
     } catch (error) {
-      throw new Error(`Error al eliminar producto: ${error.message}`);
+      throw new Error(`Error al reducir cantidad del producto: ${error.message}`);
     }
   },
   
-  async cerrarCarrito(id_carrito) {
+  
+  
+  async actualizarCantidad(id_carrito, id_producto, cantidad) {
     try {
-      // Intentar encontrar el carrito en la base de datos
       const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
-      
-      // Si no se encuentra el carrito o su estatus no es 'activo', lanzar un error
       if (!carrito) {
-        console.log(`Carrito con ID ${id_carrito} no encontrado`);
         throw new Error('Carrito no encontrado.');
       }
-  
-      if (carrito.estatus !== 'activo') {
-        console.log(`Carrito con ID ${id_carrito} ya está inactivo`);
-        throw new Error('Carrito ya está inactivo.');
+
+      const producto = await Product.findById(id_producto);
+      if (!producto) {
+        throw new Error('Producto no encontrado.');
       }
+
+      if (cantidad > producto.stock) {
+        throw new Error('Cantidad excede el stock disponible.');
+      }
+
+      const precioConIVA = producto.price;
+      const precioSinIVA = parseFloat((precioConIVA / 1.16).toFixed(2));
+      const IVAProducto = parseFloat((precioConIVA - precioSinIVA).toFixed(2));
+
+      const prodIndex = carrito.productos.findIndex((p) => p.producto._id.toString() === id_producto);
+      if (prodIndex === -1) {
+        throw new Error('Producto no encontrado en el carrito.');
+      }
+
+      carrito.productos[prodIndex].cantidad = cantidad;
+      carrito.productos[prodIndex].subtotal = parseFloat((cantidad * precioSinIVA).toFixed(2));
+
+      let subtotal = 0;
+      let IVA = 0;
+      carrito.productos.forEach((item) => {
+        subtotal += item.cantidad * precioSinIVA;
+        IVA += item.cantidad * IVAProducto;
+      });
+
+      carrito.subtotal = parseFloat(subtotal.toFixed(2));
+      carrito.IVA = parseFloat(IVA.toFixed(2));
+      carrito.total = parseFloat((subtotal + IVA).toFixed(2));
+
+      return await carrito.save();
+    } catch (error) {
+      console.error(`Error en actualizarCantidad: ${error.message}`);
+      throw new Error(`Error al actualizar la cantidad: ${error.message}`);
+    }
+  },
+
+  async eliminarProducto(id_carrito, id_producto) {
+    try {
+      const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
+      if (!carrito || carrito.estatus !== 'activo') {
+        throw new Error('Carrito no encontrado o inactivo.');
+      }
+
+      const prodIndex = carrito.productos.findIndex((p) => p.producto._id.toString() === id_producto);
+      if (prodIndex === -1) {
+        throw new Error('Producto no encontrado en el carrito.');
+      }
+
+      carrito.productos.splice(prodIndex, 1);
+
+      let subtotal = 0;
+      let IVA = 0;
+      carrito.productos.forEach((item) => {
+        const precioConIVA = item.producto.price;
+        const precioSinIVA = parseFloat((precioConIVA / 1.16).toFixed(2));
+        const IVAProducto = parseFloat((precioConIVA - precioSinIVA).toFixed(2));
+
+        subtotal += item.cantidad * precioSinIVA;
+        IVA += item.cantidad * IVAProducto;
+      });
+
+      carrito.subtotal = parseFloat(subtotal.toFixed(2));
+      carrito.IVA = parseFloat(IVA.toFixed(2));
+      carrito.total = parseFloat((subtotal + IVA).toFixed(2));
+
+      return await carrito.save();
+    } catch (error) {
+      throw new Error(`Error al eliminar producto: ${error.message}`);
+    }
+  },
+  async cerrarCarrito(id_carrito) {
+    try {
+      // Buscar el carrito en la base de datos
+      const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
+      if (!carrito) throw new Error('Carrito no encontrado.');
+      if (carrito.estatus !== 'activo') throw new Error('Carrito ya está inactivo.');
   
-      // Si todo está bien, proceder con el cierre del carrito y actualización del stock
+      // Iterar sobre los productos para validar y actualizar stock
       for (const item of carrito.productos) {
-        const producto = await Product.findById(item.producto);
-        
+        const producto = await Product.findById(item.producto._id);
         if (!producto) {
-          throw new Error(`Producto con ID ${item.producto} no encontrado.`);
+          throw new Error(`Producto con ID ${item.producto._id} no encontrado.`);
         }
-        
-        // Verificar si hay suficiente stock
+  
+        // Verificar que haya suficiente stock
         if (producto.stock < item.cantidad) {
           throw new Error(`Stock insuficiente para el producto ${producto.nombre}.`);
         }
   
-        // Restar la cantidad vendida del stock
+        // Reducir el stock del producto
         producto.stock -= item.cantidad;
         await producto.save();
-        
-        console.log(`Se ha vendido ${item.cantidad} del producto ${producto.nombre}. Nuevo stock: ${producto.stock}`);
+  
+        console.log(`Producto: ${producto.nombre}, Cantidad Vendida: ${item.cantidad}, Nuevo Stock: ${producto.stock}`);
       }
   
-      // Cambiar el estatus del carrito a inactivo
+      // Calcular totales nuevamente antes de cerrar el carrito
+      let subtotal = 0;
+      let IVA = 0;
+  
+      carrito.productos.forEach((item) => {
+        const precioConIVA = item.producto.price;
+        const precioSinIVA = parseFloat((precioConIVA / 1.16).toFixed(2));
+        const IVAProducto = parseFloat((precioConIVA - precioSinIVA).toFixed(2));
+  
+        subtotal += item.cantidad * precioSinIVA;
+        IVA += item.cantidad * IVAProducto;
+      });
+  
+      carrito.subtotal = parseFloat(subtotal.toFixed(2));
+      carrito.IVA = parseFloat(IVA.toFixed(2));
+      carrito.total = parseFloat((subtotal + IVA).toFixed(2));
+  
+      // Cambiar el estatus del carrito a "inactivo" y establecer la fecha de cierre
       carrito.estatus = 'inactivo';
       carrito.fecha_cierre = new Date();
   
-      // Guardar el carrito con los cambios
+      // Guardar el carrito actualizado
       await carrito.save();
-      
-      console.log(`Carrito con ID ${id_carrito} cerrado correctamente.`);
+  
+      console.log(`Carrito cerrado correctamente: ID ${id_carrito}`);
       return carrito;
     } catch (error) {
       console.error(`Error al cerrar el carrito: ${error.message}`);
       throw new Error(`Error al cerrar el carrito: ${error.message}`);
     }
   },
-  
-
   async leerCarrito(id_carrito) {
-  try {
-    
-    const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
-    if (!carrito) throw new Error('Carrito no encontrado.');
-
-    return carrito;
-  } catch (error) {
-    throw new Error(`Error al leer el carrito: ${error.message}`);
-  }
-},
-async leerHistorial(usuario) {
-  try {
-    const historiales = await Cart.find({ usuario }).populate('productos.producto');
-    if (!historiales || historiales.length === 0) {
-      throw new Error('No se encontraron historiales para este usuario.');
-    }
-    return historiales;
-  } catch (error) {
-    throw new Error(`Error al obtener el historial: ${error.message}`);
-  }
-},
-async LeerHistorial(_, { usuario }) {
-  console.log("usuario recibido:", usuario); // Verifica que el id sea correcto
-  try {
-    if (!usuario) throw new Error("Se debe proporcionar un usuario");
-
-    const historiales = await cartService.leerHistorial(usuario);
-    return historiales;
-  } catch (error) {
-    throw new Error(`Error al obtener el historial: ${error.message}`);
-  }
-},
-
-async reducirCantidadProducto(id_carrito, id_producto) {
-  try {
-    const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
-    if (!carrito || carrito.estatus !== 'activo') throw new Error('Carrito no encontrado o inactivo.');
-
-    // Verificar si el producto está en el carrito
-    const prodIndex = carrito.productos.findIndex(p => p.producto._id.toString() === id_producto);
-    if (prodIndex === -1) throw new Error('Producto no encontrado en el carrito.');
-
-    // Reducir la cantidad del producto
-    if (carrito.productos[prodIndex].cantidad > 1) {
-      carrito.productos[prodIndex].cantidad -= 1;
-      carrito.productos[prodIndex].subtotal -= carrito.productos[prodIndex].producto.price;
-    } else {
-      // Si la cantidad es 1, eliminar el producto del carrito
-      carrito.productos.splice(prodIndex, 1);
-    }
-
-    // Recalcular totales
-    carrito.subtotal = carrito.productos.reduce((acc, p) => acc + p.subtotal, 0);
-    carrito.IVA = carrito.subtotal * 0.16;
-    carrito.total = carrito.subtotal + carrito.IVA;
-
-    return await carrito.save();
-  } catch (error) {
-    throw new Error(`Error al reducir cantidad del producto:" ${error.message}`);
-  }
-},
-async actualizarCantidad(id_carrito, id_producto, cantidad) {
-  try {
-      // Buscar el carrito por ID
+    try {
+      // Buscar el carrito en la base de datos
       const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
-      if (!carrito || carrito.estatus !== 'activo') {
-          throw new Error('Carrito no encontrado o inactivo.');
-      }
-
-      // Buscar el producto en la base de datos
-      const producto = await Product.findById(id_producto);
-      if (!producto) {
-          throw new Error('Producto no encontrado.');
-      }
-
-      // Verificar si la cantidad deseada no excede el stock disponible
-      if (cantidad > producto.stock) {
-          throw new Error(`La cantidad solicitada excede el stock disponible de ${producto.stock}.`);
-      }
-
-      // Verificar si el producto está en el carrito
-      const prodIndex = carrito.productos.findIndex(p => p.producto._id.toString() === id_producto);
-      if (prodIndex === -1) {
-          throw new Error('Producto no encontrado en el carrito.');
-      }
-
-      // Actualizar la cantidad y recalcular el subtotal del producto
-      carrito.productos[prodIndex].cantidad = cantidad;
-      carrito.productos[prodIndex].subtotal = cantidad * producto.price;
-
-      // Recalcular los totales del carrito
-      carrito.subtotal = carrito.productos.reduce((acc, p) => acc + p.subtotal, 0);
-      carrito.IVA = carrito.subtotal * 0.16;
-      carrito.total = carrito.subtotal + carrito.IVA;
-
-      // Guardar los cambios en el carrito
-      return await carrito.save();
-  } catch (error) {
-      console.error(`Error en actualizarCantidad: ${error.message}`);
-      throw new Error(`Error al actualizar la cantidad: ${error.message}`);
-  }
-},
-async actualizarCant(id_carrito, id_producto, cantidad) {
-  try {
-      console.log(`Actualizando cantidad: ${cantidad} para producto ${id_producto} en carrito ${id_carrito}`);
+      if (!carrito) throw new Error('Carrito no encontrado.');
+  
+      // Recalcular subtotales, IVA y total para asegurarse de que los datos sean correctos
+      let subtotal = 0;
+      let IVA = 0;
+  
+      carrito.productos.forEach((item) => {
+        const precioConIVA = item.producto.price;
+        const precioSinIVA = parseFloat((precioConIVA / 1.16).toFixed(2));
+        const IVAProducto = parseFloat((precioConIVA - precioSinIVA).toFixed(2));
+  
+        subtotal += item.cantidad * precioSinIVA;
+        IVA += item.cantidad * IVAProducto;
+  
+        // Actualizar el subtotal de cada producto individualmente
+        item.subtotal = parseFloat((item.cantidad * precioSinIVA).toFixed(2));
+      });
+  
+      // Actualizar los totales en el carrito
+      carrito.subtotal = parseFloat(subtotal.toFixed(2));
+      carrito.IVA = parseFloat(IVA.toFixed(2));
+      carrito.total = parseFloat((subtotal + IVA).toFixed(2));
+  
+      return carrito;
+    } catch (error) {
+      console.error(`Error al leer el carrito: ${error.message}`);
+      throw new Error(`Error al leer el carrito: ${error.message}`);
+    }
+  },
+  async leerHistorial(usuario) {
+    try {
+      // Buscar los carritos del usuario
+      const historiales = await Cart.find({ usuario }).populate('productos.producto');
       
-      // Buscar el carrito correspondiente
-      const carrito = await Cart.findOne({ id_carrito }).populate('productos.producto');
-      if (!carrito) {
-          console.error('Carrito no encontrado.');
-          return null;
+      if (!historiales || historiales.length === 0) {
+        throw new Error('No se encontraron historiales para este usuario.');
       }
-
-      // Buscar el producto correspondiente
-      const producto = await Product.findById(id_producto);
-      if (!producto) {
-          console.error('Producto no encontrado.');
-          return null;
-      }
-
-      // Validar que la cantidad no exceda el stock disponible
-      if (cantidad > producto.stock) {
-          console.error('Cantidad excede el stock disponible.');
-          return null;
-      }
-
-      // Buscar el índice del producto dentro del carrito
-      const prodIndex = carrito.productos.findIndex(p => p.producto._id.toString() === id_producto);
-      if (prodIndex === -1) {
-          console.error('Producto no encontrado en el carrito.');
-          return null;
-      }
-
-      // Actualizar la cantidad y el subtotal del producto en el carrito
-      carrito.productos[prodIndex].cantidad = cantidad;
-      carrito.productos[prodIndex].subtotal = cantidad * producto.price;
-
-      // Recalcular el subtotal, IVA y total del carrito
-      carrito.subtotal = carrito.productos.reduce((acc, p) => acc + p.subtotal, 0);
-      carrito.IVA = carrito.subtotal * 0.16;
-      carrito.total = carrito.subtotal + carrito.IVA;
-
-      console.log('Carrito actualizado correctamente.');
-      return await carrito.save();
-  } catch (error) {
-      console.error(`Error en actualizarCantidad: ${error.message}`);
-      throw new Error(`Error al actualizar la cantidad: ${error.message}`);
+  
+      // Recalcular los totales en cada carrito para garantizar los datos correctos
+      const historialCalculado = historiales.map(carrito => {
+        let subtotal = 0;
+        let IVA = 0;
+  
+        // Calcular subtotal e IVA de los productos
+        carrito.productos.forEach(item => {
+          const price = item.producto.price;
+          const cantidad = item.cantidad;
+  
+          const subtotalProducto = (price / 1.16) * cantidad; // Precio sin IVA
+          const IVAProducto = (price - price / 1.16) * cantidad; // IVA por producto
+  
+          subtotal += subtotalProducto;
+          IVA += IVAProducto;
+        });
+  
+        // Actualizar los totales del carrito
+        carrito.subtotal = parseFloat(subtotal.toFixed(2));
+        carrito.IVA = parseFloat(IVA.toFixed(2));
+        carrito.total = parseFloat((subtotal + IVA).toFixed(2));
+  
+        return carrito;
+      });
+  
+      return historialCalculado;
+    } catch (error) {
+      console.error(`Error al obtener el historial: ${error.message}`);
+      throw new Error(`Error al obtener el historial: ${error.message}`);
+    }
   }
-}
-
-
+  
+  
+  
 };
-

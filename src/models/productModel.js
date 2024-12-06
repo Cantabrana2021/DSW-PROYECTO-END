@@ -18,7 +18,10 @@ const productSchema = new mongoose.Schema({
     stock: { type: Number, default: 0, min: 0 },      // stock con valor por defecto de 0
     createAt: { type: Date, default: Date.now },      // fecha de creación por defecto
     imgs: { type: [String], default: [] },             // URLs de imágenes del producto
-    facturapiid: {type: String, required: true}
+    facturapiid: {type: String, required: true},
+    clave_producto: String,  // Clave del producto
+    sku: String,  // SKU del producto
+    unidad_medida: String  // Unidad de medida del producto
 });
 
 // Evita la redefinición del modelo si ya existe
